@@ -12,7 +12,7 @@ This repository contains the analysis code supporting the manuscript characteris
 ## Bioinformatics pipeline summary
 
 ```
-Raw reads (Illumina paired-end, stool metagenomes; 15 cohorts)
+Raw reads (stool metagenomes, 15 cohorts)
         │
         ▼
   Kraken2 (HPRC database) → KrakenTools (human read removal)
@@ -21,7 +21,7 @@ Raw reads (Illumina paired-end, stool metagenomes; 15 cohorts)
   Kraken2 (custom GTDB R214 database, confidence = 0.1)
         │
         ▼
-  Bracken (species-level, read length 150, threshold 25)
+  Bracken (species-level, threshold 25)
         │
         ▼
   R: combine_bracken_outputs → phyloseq object
@@ -32,32 +32,30 @@ Raw reads (Illumina paired-end, stool metagenomes; 15 cohorts)
         │         │
         │         └──► Mixed-effects logistic regression of archaeal detection
         │
-        ├──► ACT assignment per sample (dominant archaeal species)
+        ├──► ACT assignment per sample (dominant archaea)
         │         │
-        │         ├──► ComplexHeatmap (CLR-transformed ACT heatmap)
+        │         ├──► ACT heatmaps
         │         └──► Geographic distribution of ACTs
         │
         ├──► GTDB R214 archaeal reference tree → Microreact
         │         (phylogeny of prevalent gut archaea)
         │
-        ├──► Bacterial community composition (genus-level, CLR-transformed)
+        ├──► Bacterial community composition (genus-level)
         │         │
         │         ├──► PCA 
-        │         └──► PERMANOVA pairwise across ACTs, adjusted for read depth
+        │         └──► PERMANOVA pairwise across ACTs (adjusted for depth)
         │
         ├──► FastSpar (SparCC) correlations: Methanobrevibacter species vs bacterial genera
         │         │
-        │         ├──► 200 inference iterations, 10,000 bootstraps
-        │         └──► FDR-corrected per cohort (Figure 4)
+        │         └──► 200 inference iterations, 10,000 bootstraps
         │
         └──► FINRISK 2002 host-trait modelling (n = 3,156)
                   │
-                  ├──► Multinomial logistic regression 
-                  │    Outcome: ACT (M. smithii–dominated as reference)
-                  │    Predictors: diet, BMI, smoking, antibiotic use,
-                  │                acetate, liver enzymes, prevalent liver disease
-                  │    
-                  └──► Adjusted for age, sex, sequencing batch, log10 read depth
+                  └──► Multinomial logistic regression 
+                       Outcome: ACT (M. smithii–dominated as reference)
+                       Predictors: age, sex, diet, BMI, smoking, antibiotic use,
+                                   acetate, liver enzymes, prevalent liver disease, sequencing batch, log10 read depth
+                      
 
 Methanobrevibacter representative genomes (M. smithii, M. intestini, M. sp900766745)
         │
@@ -67,7 +65,7 @@ Methanobrevibacter representative genomes (M. smithii, M. intestini, M. sp900766
         │
         └──► MICOM community-scale flux balance analysis (PREDICT 1, matched pairs)
                   │
-                  ├──► MatchIt (1:1 matching on age, sex, BMI, sequencing depth)
+                  ├──► MatchIt (1:1 matching on age, sex, BMI (healhty range), sequencing depth)
                   ├──► Community models from UHGG + human gut archaeal genome catalogue
                   └──► LASSO classifier on metabolic flux profiles 
 ```
