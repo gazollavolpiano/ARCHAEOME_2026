@@ -1,135 +1,197 @@
 # Associations between ACT and host factors in FINRISK 2002
 
-The file `df4g.RData` contains a dataframe with 3156 samples and 359 host variables. The variable `ArchaealCommunityType` contains the ACTs (M. smithii-dominanted, Ca. M. intestini-dominanted, M. sp900766745-dominanted, Diverse). We will use multinomial logistic regression to test for associations between ACT and host factors (diet, metabolites, liver enzymes, liver disease). 
+The file `health_data.RData` contains the host variables. The file `FINRISK_2002_archcommunity_types_read_depth.csv` contains the variable `ArchaealCommunityType` with the ACTs (M. smithii-dominanted, Ca. M. intestini-dominanted, M. sp900766745-dominanted, Diverse). 
 
-```R
-# load libraries
+```
+# load libs
 library(tidyverse)
-
-# increase width of the console
-options(width = 300)  
-
-# load health data
-load("df4g.RData")
-dim(df4g) # 3156 x 359
-
-# use multinomial logistic regression 
 library(nnet)
+library(broom)
 
-# define the levels (reference = M. smithii-dominanted)
-df4g$ArchaealCommunityType <- factor(df4g$ArchaealCommunityType, levels = c("M. smithii-dominanted", "Ca. M. intestini-dominanted", "M. sp900766745-dominanted", "Diverse"))
+# read/load files of interest
+load("health_data.RData")
 
-###############################
-# DIET: FIBER_TOTAL and RED_MEAT models
-################################
+act <- read.csv("FINRISK_2002_archcommunity_types_read_depth.csv")
+head(act, 2)
+# SampleID Archaea_detected Species ArchaealCommunityType ReadDepth        Study
+#1 .........-.                0    <NA>                  <NA>   9168344 FINRISK 2002
+#2 .........-.                0    <NA>                  <NA>  10609149 FINRISK 2002
 
-# fit the model
-mm <- multinom(ArchaealCommunityType ~ FIBER_TOTAL + RED_MEAT + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data = df4g)
+# prepare dataframe for associations
+data <- act %>%
+          rename(Barcode = SampleID) %>%
+          filter(Archaea_detected == 1) %>%
+          select(Barcode, ArchaealCommunityType, ReadDepth) %>%
+          left_join(health$covariates %>% select(Barcode, ReadDepthMillions, BL_AGE, MEN, BMI, BL_USE_RX_J01, batch_name)) %>%
+          left_join(health$baseline %>% select(Barcode, ALKI2_FR02, CURR_SMOKE, FIBER_TOTAL, RED_MEAT, ACETATE, GGT, ALAT)) %>%
+          left_join(health$followup %>% select(Barcode, PREVAL_DIAB_T2, PREVAL_LIVERDIS))
 
-tidy_mm <- broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% 
-            filter(term != "(Intercept)") %>% 
-            mutate(effect = paste0(round(estimate,2), " (", round(conf.low,2), ", ", round(conf.high,2), ")")) %>%
-            select(y.level, term, effect, p.value) 
+head(data,2)
+dim(data) # 3156   18
 
-tidy_mm %>% write_csv("diet_multinom_results.csv")
+# prepare data transformations
+data$ArchaealCommunityType <- factor(data$ArchaealCommunityType, levels=c("M. smithii-dominanted", "Ca. M. intestini-dominanted", "M. sp900766745-dominanted", "Diverse"))
+data$PREVAL_LIVERDIS <- as.factor(data$PREVAL_LIVERDIS)
+data$PREVAL_DIAB_T2 <- as.factor(data$PREVAL_DIAB_T2)
+data$MEN <- as.factor(data$MEN)
+data$ReadDepth_log10 <- log10(data$ReadDepth)
+data$ACETATE_rin <- qnorm((rank(data$ACETATE, na.last = "keep") - 0.5) / sum(!is.na(data$ACETATE)))
+data$ALAT_log10 <- log10(data$ALAT+1)
+data$GGT_log10 <- log10(data$GGT+1)
 
-################################
-#          ACETATE
-################################
+#################
+# Model 0: BASE MODEL
+##################
 
-# rank inverse normal transformation
-df4g$acetate_rin <- qnorm((rank(df4g$ACETATE) - 0.5) / nrow(df4g))
+mm <- multinom(ArchaealCommunityType ~ BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("basic_result.csv")
+nobs(mm) #3067
 
-# fit the model
-mm <- multinom(ArchaealCommunityType ~ acetate_rin + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data = df4g)
+#################
+# RED MEAT and FIBER: CHECK CORRELATION
+##################
 
-tidy_mm <- broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% 
-            filter(term != "(Intercept)") %>% 
-            mutate(effect = paste0(round(estimate,2), " (", round(conf.low,2), ", ", round(conf.high,2), ")")) %>%
-            select(y.level, term, effect, p.value) 
+cor.test(data$RED_MEAT, data$FIBER_TOTAL, method="spearman", exact=FALSE)
+#Spearman's rank correlation rho
+#
+#data:  data$RED_MEAT and data$FIBER_TOTAL
+#S = 4282279512, p-value = 0.006789
+#alternative hypothesis: true rho is not equal to 0
+#sample estimates:
+#       rho 
+#-0.0502319 
+sum(complete.cases(data$RED_MEAT, data$FIBER_TOTAL))
+# 2903
 
-tidy_mm %>% write_csv("acetate_multinom_results.csv")
+#################
+# MODEL 1: RED MEAT and FIBER (PRIMARY DIET)
+##################
 
-# also plot the distribution of acetate across ACTs
-svg("acetate_rin_ACT.svg", width = 2, height = 3)
-ggplot(df4g, aes(x = ArchaealCommunityType, y = acetate_rin, fill = ArchaealCommunityType)) +
-  geom_boxplot() +
-  scale_fill_manual(values = c("M. smithii-dominanted" = "#7E6C9E", 
-                               "Ca. M. intestini-dominanted" = "#181A34", 
-                               "M. sp900766745-dominanted" = "#EBE572",  
-                               "Diverse" = "#E5E5E0"), 
-                    name="Archaeal community types") +
-  labs(x = "", y = "Acetate (ranked)") +
-  theme_classic(10) +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none")
+mm <- multinom(ArchaealCommunityType ~ FIBER_TOTAL + RED_MEAT + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("diet_fiber_meat_result.csv")
+nobs(mm) #2841
+
+#################
+# MODEL 1s: RED MEAT and FIBER, NO BMI
+##################
+
+mm <- multinom(ArchaealCommunityType ~ FIBER_TOTAL + RED_MEAT + BL_AGE + MEN + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("diet_fiber_meat_nobmi_result.csv")
+nobs(mm) #2841
+
+#################
+# MODEL 2: ACETATE (ArchaealCommunityType as the outcome)
+##################
+
+mm <- multinom(ArchaealCommunityType ~ ACETATE_rin + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("acetate_result_multinom.csv")
+nobs(mm) #2805
+
+#################
+# MODEL 2s: ACETATE as outcome (lm)
+##################
+
+mlm <- lm(ACETATE_rin ~ ArchaealCommunityType + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mlm, conf.int = TRUE) %>% write_csv("acetate_result_acetate_outcome_lm.csv")
+nobs(mlm) #2805
+
+svg("acetate_result_acetate_outcome_lm_diagnostics.svg", width = 8, height = 8)
+par(mfrow=c(2,2)); plot(mlm) 
 dev.off()
 
-################################
-# GGT and ALT
-################################
-
-# check correlation
-cor.test(df4g$GGT, df4g$ALAT, method = "spearman", use = "complete.obs", exact  = FALSE) # correlated (rho=0.6)
-
-# transform the variables
-df4g$log10GGT <- log10(df4g$GGT + 1)
-df4g$log10ALAT <- log10(df4g$ALAT + 1)
-
-# log10GGT
-mm <- multinom(ArchaealCommunityType ~ log10GGT + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data = df4g)
-
-tidy_mm <- broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% 
-            filter(term != "(Intercept)") %>% 
-            mutate(effect = paste0(round(estimate,2), " (", round(conf.low,2), ", ", round(conf.high,2), ")")) %>%
-            select(y.level, term, effect, p.value) 
-
-tidy_mm %>% write_csv("log10GGT_multinom_results.csv")
-
-svg("log10GGT_ACT.svg", width = 2, height = 3)
-ggplot(df4g, aes(x = ArchaealCommunityType, y = log10GGT, fill = ArchaealCommunityType)) +
-  geom_boxplot() +
-  scale_fill_manual(values = c("M. smithii-dominanted" = "#7E6C9E", 
-                               "Ca. M. intestini-dominanted" = "#181A34", 
-                               "M. sp900766745-dominanted" = "#EBE572",  
-                               "Diverse" = "#E5E5E0"), 
-                    name="Archaeal community types") +
-  labs(x = "", y = "log10(GGT+1)") +
-  theme_classic(10) +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none")
+svg("hist_acetate_rin.svg", width = 2, height = 4)
+ggplot(data, aes(x=ACETATE_rin))+
+  geom_histogram(aes(y=after_stat(density)), bins=40,
+                fill="grey80", colour="white")+
+  stat_function(fun=dnorm,
+                args = list(mean=mean(data$ACETATE_rin, na.rm=TRUE),
+                            sd=sd(data$ACETATE_rin, na.rm=TRUE)),
+                colour="red", linewidth=0.7)+
+  labs(x="Acetate (ranked", y="Density")+
+  theme_bw(11)
 dev.off()
 
-# log10ALAT
-mm <- multinom(ArchaealCommunityType ~ log10ALAT + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data = df4g)
+#################
+# MODEL 3: GGT (ArchaealCommunityType as the outcome + ALKI2_FR02)
+##################
 
-tidy_mm <- broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% 
-            filter(term != "(Intercept)") %>% 
-            mutate(effect = paste0(round(estimate,2), " (", round(conf.low,2), ", ", round(conf.high,2), ")")) %>%
-            select(y.level, term, effect, p.value) 
+mm <- multinom(ArchaealCommunityType ~ GGT_log10 + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + ALKI2_FR02 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("GGT_result_multinom.csv")
+nobs(mm) #2946
 
-tidy_mm %>% write_csv("log10ALAT_multinom_results.csv")
+#################
+# MODEL 3s: GGT as outcome (lm) + ALKI2_FR02
+##################
 
-svg("log10ALAT_ACT.svg", width = 2, height = 3)
-ggplot(df4g, aes(x = ArchaealCommunityType, y = log10ALAT, fill = ArchaealCommunityType)) +
-  geom_boxplot() +
-  scale_fill_manual(values = c("M. smithii-dominanted" = "#7E6C9E", 
-                               "Ca. M. intestini-dominanted" = "#181A34", 
-                               "M. sp900766745-dominanted" = "#EBE572",  
-                               "Diverse" = "#E5E5E0"), 
-                    name="Archaeal community types") +
-  labs(x = "", y = "log10(ALAT+1)") +
-  theme_classic(10) +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none")
+mlm <- lm(GGT_log10 ~ ArchaealCommunityType + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + ALKI2_FR02 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mlm, conf.int = TRUE) %>% write_csv("GGT_result_GGT_outcome_lm.csv")
+nobs(mlm) #2946
+
+svg("GGT_result_GGT_outcome_lm_diagnostics.svg", width = 8, height = 8)
+par(mfrow=c(2,2)); plot(mlm) 
 dev.off()
 
-##############################
-#       Liver disease
-################################
-mm <- multinom(ArchaealCommunityType ~ PREVAL_LIVERDIS + ALKI2_FR02 + PREVAL_DIAB_T2 + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + batch_name + ReadDepth_log10, data = df4g)
+svg("hist_GGT_log10.svg", width = 2, height = 4)
+ggplot(data, aes(x=GGT_log10))+
+  geom_histogram(aes(y=after_stat(density)), bins=40,
+                 fill="grey80", colour="white")+
+  stat_function(fun=dnorm,
+                args = list(mean=mean(data$GGT_log10, na.rm=TRUE),
+                            sd=sd(data$GGT_log10, na.rm=TRUE)),
+                colour="red", linewidth=0.7)+
+  labs(x="log10(GGT+1)", y="Density")+
+  theme_bw(11)
+dev.off()
 
-tidy_mm <- broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% 
-            filter(term != "(Intercept)") %>% 
-            mutate(effect = paste0(round(estimate,2), " (", round(conf.low,2), ", ", round(conf.high,2), ")")) %>%
-            select(y.level, term, effect, p.value) 
+#################
+# MODEL 4: ALAT (ArchaealCommunityType as the outcome + ALKI2_FR02)
+##################
 
-tidy_mm %>% write_csv("PREVAL_LIVERDIS_multinom_results.csv")
+mm <- multinom(ArchaealCommunityType ~ ALAT_log10 + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + ALKI2_FR02 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mm, exponentiate = TRUE, conf.int = TRUE) %>% write_csv("ALAT_result_multinom.csv")
+nobs(mm) #2938
+
+#################
+# MODEL 4s: ALAT as outcome (lm) + ALKI2_FR02
+##################
+
+mlm <- lm(ALAT_log10 ~ ArchaealCommunityType + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + ALKI2_FR02 + batch_name + ReadDepth_log10, data) 
+broom::tidy(mlm, conf.int = TRUE) %>% write_csv("ALAT_result_ALAT_outcome_lm.csv")
+nobs(mlm) #2938
+
+svg("ALAT_result_ALAT_outcome_lm_diagnostics.svg", width = 8, height = 8)
+par(mfrow=c(2,2)); plot(mlm) 
+dev.off()
+
+svg("hist_ALAT_log10.svg", width = 2, height = 4)
+ggplot(data, aes(x=ALAT_log10))+
+  geom_histogram(aes(y=after_stat(density)), bins=40,
+                 fill="grey80", colour="white")+
+  stat_function(fun=dnorm,
+                args = list(mean=mean(data$ALAT_log10, na.rm=TRUE),
+                            sd=sd(data$ALAT_log10, na.rm=TRUE)),
+                colour="red", linewidth=0.7)+
+  labs(x="log10(ALAT+1)", y="Density")+
+  theme_bw(11)
+dev.off()
+
+#################
+# MODEL 5: LD as the outcome, GLM model, + ALKI2_FR02 + PREVAL_DIAB_T2
+##################
+
+mglm <- glm(PREVAL_LIVERDIS ~ ArchaealCommunityType + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + 
+              ALKI2_FR02 + PREVAL_DIAB_T2 + batch_name + ReadDepth_log10, data,
+               family=binomial()) 
+write.csv(file="LD_result_glm.csv", broom::tidy(mglm, exponentiate = TRUE, conf.int = TRUE))
+nobs(mglm) #2946
+
+#################
+# MODEL 5s: LD as the outcome, GLM model, + ALKI2_FR02 + PREVAL_DIAB_T2, NO BATCH INCLUDED
+##################
+
+mglm <- glm(PREVAL_LIVERDIS ~ ArchaealCommunityType + BL_AGE + MEN + BMI + CURR_SMOKE + BL_USE_RX_J01 + 
+              ALKI2_FR02 + PREVAL_DIAB_T2  + ReadDepth_log10, data,
+            family=binomial()) 
+write.csv(file="LD_result_glm_no_batch.csv", broom::tidy(mglm, exponentiate = TRUE, conf.int = TRUE))
+nobs(mglm) #2946
 ```
