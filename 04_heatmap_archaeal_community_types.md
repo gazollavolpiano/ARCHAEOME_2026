@@ -4,6 +4,8 @@ This is an example of the heatmap created for FINRISK 2002 for participants with
 
 Samples are grouped by their dominant archaeal species, highlighting distinct archaeal community types. The same processing steps were applied as for the public cohorts.
 
+We will also export a file with the abundance table so that it can be shared in the manuscript
+
 ```R
 # load libraries
 library(tidyverse)
@@ -76,6 +78,13 @@ archaea_final <- bind_rows(
   archaea_other_rare   # aggregated as "Rare" for all other genera
 )
 
+# save the archaea_final abundance table, so it can be shared
+# anonymize Samples by replacing them with generic IDs (e.g. Sample1, Sample2, etc.)
+archaea_final %>%
+  mutate(Sample = paste0("Sample", as.integer(factor(Sample)))) %>%
+  arrange(desc(Abundance)) %>%
+  write_csv("archaea_abundance_table.csv")
+
 # add bacteria component
 bacteria_component <- melt_phyloseq %>% 
                   filter(Domain == "Bacteria") %>%
@@ -103,31 +112,35 @@ archaea_taxa <- grep("Archaea", abundance_table_study[, 1], value = TRUE)
 ## step 0: a "zero mask" for all rows/columns *before* transformations
 ##         so we know exactly which entries were originally zero
 ##         - We'll use the same shape as the main count matrix (rows = taxa, columns = samples)
-##         - Then later, we can revert these positions to 0 in the final matrices
+##         - Then later, we can revert these positions to NA in the final matrices
 otu_counts <- as.matrix(abundance_table_study[, -1])
 rownames(otu_counts) <- abundance_table_study[, 1]
 
 original_zero_mask <- (otu_counts == 0)
 
-# prepare the CLR data for Archaea 
+# prepare the CLR data for Archaea
 # step 1: compositional transformation: for each sample, divide by total counts
 #         a small constant 1e-32 is used to avoid division by zero
 otu_compositional <- apply(otu_counts, 2, function(x) {
   x / max(sum(x), 1e-32)
 })
 
-# step 2: adjust for zeros: if any value is exactly zero, add a small constant
-if(any(otu_compositional == 0)) {
+# step 2: adjust for zeros: add a small constant ONLY to the cells that are exactly zero,
+#         so the pseudocount does not shift the per-sample geometric mean (and therefore
+#         does not change the CLR values of the taxa that were actually present)
+zero_cells <- (otu_compositional == 0)
+if (any(zero_cells)) {
   min_nonzero <- min(otu_compositional[otu_compositional > 0])
-  otu_compositional <- otu_compositional + (min_nonzero / 2)
+  otu_compositional[zero_cells] <- min_nonzero / 2
 }
 
 # Step 3: Compute the CLR transformation
+#         apply(..., 2, ...) operates column-by-column (samples) and returns the
+#         results as columns, so the output is already taxa (rows) x samples (cols).
+#         The two t() calls below cancel out and leave the matrix in that orientation.
 clr_matrix <- t(apply(otu_compositional, 2, function(x) {
   log(x) - mean(log(x))
 }))
-
-# by default, that sets columns as taxa and rows as samples, so we transpose back
 clr_matrix <- t(clr_matrix)
 
 # attach original row names
@@ -136,11 +149,11 @@ rownames(clr_matrix) <- rownames(otu_counts)
 # subset to the Archaea rows
 archaea_clr_matrix <- clr_matrix[archaea_taxa, , drop = FALSE]
 
-# step 4: revert the originally-zero cells to NA 
+# step 4: revert the originally-zero cells to NA (plotting only)
+#         archaea_zero_mask is already in the same row/column order as
+#         archaea_clr_matrix, so it can be used to index directly.
 archaea_zero_mask <- original_zero_mask[archaea_taxa, , drop = FALSE]
-archaea_clr_matrix[archaea_zero_mask[rownames(archaea_clr_matrix), 
-                                      colnames(archaea_clr_matrix), 
-                                      drop = FALSE]] <- NA
+archaea_clr_matrix[archaea_zero_mask] <- NA
 
 ############################################################
 #  plot heatmap 
@@ -291,6 +304,12 @@ ht <- Heatmap(taxonomic_table,
               border = "black",
               top_annotation = ha_top)
 
-# save the heatmap to a file
+# save the heatmap to files
+svg("heatmap_archcommunity_types.svg", width = 16, height = 8)
+draw(ht,
+     heatmap_legend_side = "bottom",
+     padding = unit(c(2, 40, 2, 2), "mm"))  # bottom, left, top, right
+dev.off()
+
 saveRDS(ht, file="heatmap_archcommunity_types.rds")
 ```
