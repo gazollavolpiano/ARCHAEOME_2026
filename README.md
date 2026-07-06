@@ -86,3 +86,10 @@ Methanobrevibacter representative genomes (M. smithii, M. intestini, M. sp900766
 | FastTree | 2.1.10 | Initial guide tree for IQ-TREE |
 | MICOM (via QIIME2 wrapper) | 0.16.0 | Community-scale flux balance analysis |
 | curatedMetagenomicData | 3.6.2 | Public cohort metadata and SRA accession retrieval |
+
+
+## Citation and license
+
+All analysis code in this repository is released under the **MIT license** (see `LICENSE.md`) and archived at Zenodo (DOI to be added).
+
+If you use this code, please cite: (manuscript DOI to be added).
