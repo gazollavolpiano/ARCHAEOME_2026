@@ -30,7 +30,7 @@ Raw reads (stool metagenomes, 15 cohorts)
         │         │
         │         ├──► Cohort-level prevalence summaries 
         │         │
-        │         └──► Fisher / nixed-effects logistic regression of archaeal detection
+        │         └──► Fisher's exact tests (age) / mixed-effects lr (age, seq depth) of archaeal detection
         │
         ├──► ACT assignment per sample (dominant archaea)
         │         │
