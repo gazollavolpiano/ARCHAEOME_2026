@@ -64,12 +64,12 @@ Family 6 — Incident liver disease (Cox)
 Exclusion design does not work for liver, we do not have enought cases!
 
 energy-dense food because FINRISK 2002 has NO total energy intake (kcal/day) variable = 
-- FR02_98 (number of meals and snacks on weekdays, ordinal 1 to 4)
-- BREAD_SLICES_PER_DAY (count/day)
-- JUNK_FOOD  (self-rated diet healthiness)
+- FR02_98 (number of meals and snacks on weekdays, ordinal 1 to 4), entered as numeric
+- BREAD_SLICES_PER_DAY (count/day), entered as numeric
+- JUNK_FOOD  (a “junk-food score”)
 
 energy expenditure = 
-- Q57X (Exercise at free-time, ordinal	1=not much;2=walk etc;3=regular 3hrs or more or competitive sports)
+- Q57X (Exercise at free-time, ordinal	1=not much;2=walk etc;3=regular 3hrs or more or competitive sports), entered as numeric
 
 Reference group = M. smithii (first factor level) throughout
 
