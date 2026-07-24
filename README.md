@@ -80,10 +80,6 @@ Methanobrevibacter representative genomes (M. smithii, M. intestini, M. sp900766
 | Bracken | 2.9 | Species-level abundance re-estimation (read length 150, min 25 reads) |
 | FastSpar | 1.0.0 | SparCC correlation inference with bootstrap p-values |
 | Gapseq | 1.4.0 | Genome-scale reaction and transporter prediction |
-| HMMER | 3.1b1 | Marker gene identification (archaeal phylogeny) |
-| Prodigal | 2.6.3 | Gene calling (archaeal phylogeny) |
-| IQ-TREE | 2.1.2 | Maximum-likelihood phylogenetic inference (PMSF model) |
-| FastTree | 2.1.10 | Initial guide tree for IQ-TREE |
 | MICOM (via QIIME2 wrapper) | 0.16.0 | Community-scale flux balance analysis |
 | curatedMetagenomicData | 3.6.2 | Public cohort metadata and SRA accession retrieval |
 
